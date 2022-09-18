@@ -217,7 +217,9 @@ public class RegistryProtocol implements Protocol, ScopeModelAware {
 
     @Override
     public <T> Exporter<T> export(final Invoker<T> originInvoker) throws RpcException {
+        // 获取注册中心URL
         URL registryUrl = getRegistryUrl(originInvoker);
+        // 获取服务注册地址
         // url to export locally
         URL providerUrl = getProviderUrl(originInvoker);
 
@@ -225,22 +227,28 @@ public class RegistryProtocol implements Protocol, ScopeModelAware {
         // FIXME When the provider subscribes, it will affect the scene : a certain JVM exposes the service and call
         //  the same service. Because the subscribed is cached key with the name of the service, it causes the
         //  subscription information to cover.
+        // 获取服务订阅地址将服务注册地址协议dubbo改成了provider，再加了些参数
         final URL overrideSubscribeUrl = getSubscribedOverrideUrl(providerUrl);
+        // 创建监听器
         final OverrideListener overrideSubscribeListener = new OverrideListener(overrideSubscribeUrl, originInvoker);
+        // 注册监听器
         Map<URL, NotifyListener> overrideListeners = getProviderConfigurationListener(providerUrl).getOverrideListeners();
         overrideListeners.put(registryUrl, overrideSubscribeListener);
-
+        // 重写provider url
         providerUrl = overrideUrlWithConfig(providerUrl, overrideSubscribeListener);
         //export invoker
         final ExporterChangeableWrapper<T> exporter = doLocalExport(originInvoker, providerUrl);
 
         // url to registry
+        // 获取注册中心，以zookeeper举例
         final Registry registry = getRegistry(registryUrl);
+        // 获取暴露到注册中心的服务地址
         final URL registeredProviderUrl = getUrlToRegistry(providerUrl, registryUrl);
 
         // decide if we need to delay publish (provider itself and registry should both need to register)
         boolean register = providerUrl.getParameter(REGISTER_KEY, true) && registryUrl.getParameter(REGISTER_KEY, true);
         if (register) {
+            // 注册中心进行注册
             register(registry, registeredProviderUrl);
         }
 
@@ -253,9 +261,10 @@ public class RegistryProtocol implements Protocol, ScopeModelAware {
 
         if (!registry.isServiceDiscovery()) {
             // Deprecated! Subscribe to override rules in 2.6.x or before.
+            // 以zk记录，订阅之后触发通知，然后保存配置
             registry.subscribe(overrideSubscribeUrl, overrideSubscribeListener);
         }
-
+        // 通知监听器
         notifyExport(exporter);
         //Ensure that a new exporter instance is returned every time export
         return new DestroyableExporter<>(exporter);
@@ -287,6 +296,7 @@ public class RegistryProtocol implements Protocol, ScopeModelAware {
 
         return (ExporterChangeableWrapper<T>) bounds.computeIfAbsent(key, s -> {
             Invoker<?> invokerDelegate = new InvokerDelegate<>(originInvoker, providerUrl);
+            // 根据具体的服务协议进行暴露，这里以dubbo协议举例
             return new ExporterChangeableWrapper<>((Exporter<T>) protocol.export(invokerDelegate), originInvoker);
         });
     }

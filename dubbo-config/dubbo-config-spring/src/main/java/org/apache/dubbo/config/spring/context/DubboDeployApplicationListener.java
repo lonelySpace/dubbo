@@ -104,6 +104,10 @@ public class DubboDeployApplicationListener implements ApplicationListener<Appli
         }
     }
 
+    /**
+     * 利用Spring事件，来实现dubbo服务的启动
+     * @param event
+     */
     private void onContextRefreshedEvent(ContextRefreshedEvent event) {
         ModuleDeployer deployer = moduleModel.getDeployer();
         Assert.notNull(deployer, "Module deployer is null");

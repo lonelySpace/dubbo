@@ -57,6 +57,7 @@ public abstract class ServiceConfigBase<T> extends AbstractServiceConfig {
 
     /**
      * The reference of the interface implementation
+     * 服务实现类，在创建BeanDefinition的时候就设置好了引用关系
      */
     protected T ref;
 

@@ -133,11 +133,13 @@ public class DefaultModuleDeployer extends AbstractDeployer<ModuleModel> impleme
     }
 
     private synchronized Future startSync() throws IllegalStateException {
+        // 检测服务状态是否满足启动条件
         if (isStopping() || isStopped() || isFailed()) {
             throw new IllegalStateException(getIdentifier() + " is stopping or stopped, can not start again");
         }
 
         try {
+            // 服务正在启动或者已经启动完毕
             if (isStarting() || isStarted()) {
                 return startFuture;
             }
@@ -310,7 +312,11 @@ public class DefaultModuleDeployer extends AbstractDeployer<ModuleModel> impleme
         moduleModel.getConfigManager().refreshAll();
     }
 
+    /**
+     * 进行服务暴露
+     */
     private void exportServices() {
+        // 遍历每一份服务配置，进行服务暴露
         for (ServiceConfigBase sc : configManager.getServices()) {
             exportServiceInternal(sc);
         }
@@ -319,17 +325,22 @@ public class DefaultModuleDeployer extends AbstractDeployer<ModuleModel> impleme
     private void exportServiceInternal(ServiceConfigBase sc) {
         ServiceConfig<?> serviceConfig = (ServiceConfig<?>) sc;
         if (!serviceConfig.isRefreshed()) {
+            // 刷新服务陪孩子
             serviceConfig.refresh();
         }
         if (sc.isExported()) {
+            // 服务已经暴露过
             return;
         }
         if (exportAsync || sc.shouldExportAsync()) {
+            // 异步暴露
             ExecutorService executor = executorRepository.getServiceExportExecutor();
             CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
                 try {
                     if (!sc.isExported()) {
+                        // 进行服务暴露
                         sc.export();
+                        // 添加到已暴露服务列表中
                         exportedServices.add(sc);
                     }
                 } catch (Throwable t) {
@@ -339,8 +350,11 @@ public class DefaultModuleDeployer extends AbstractDeployer<ModuleModel> impleme
 
             asyncExportingFutures.add(future);
         } else {
+            // 同步暴露
             if (!sc.isExported()) {
+                // 进行服务暴露
                 sc.export();
+                // 添加到已暴露服务列表中
                 exportedServices.add(sc);
             }
         }

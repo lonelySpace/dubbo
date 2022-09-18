@@ -194,24 +194,44 @@ public class ConfigValidationUtils {
         ApplicationConfig application = interfaceConfig.getApplication();
         List<RegistryConfig> registries = interfaceConfig.getRegistries();
         if (CollectionUtils.isNotEmpty(registries)) {
+            // 注册中心配置不为空，可以有多个注册中心配置
             for (RegistryConfig config : registries) {
                 // try to refresh registry in case it is set directly by user using config.setRegistries()
                 if (!config.isRefreshed()) {
+                    // 刷新注册中心配置
                     config.refresh();
                 }
+                // 获取注册中心地址
                 String address = config.getAddress();
                 if (StringUtils.isEmpty(address)) {
+                    // 为空的时候默认0.0.0.0
                     address = ANYHOST_VALUE;
                 }
                 if (!RegistryConfig.NO_AVAILABLE.equalsIgnoreCase(address)) {
+                    // 正常的注册中心地址
                     Map<String, String> map = new HashMap<String, String>();
+                    // 从ApplicationConfig中获取参数
                     AbstractConfig.appendParameters(map, application);
+                    // 从RegistryConfig中获取参数
                     AbstractConfig.appendParameters(map, config);
                     map.put(PATH_KEY, RegistryService.class.getName());
+                    // 添加运行时参数
                     AbstractInterfaceConfig.appendRuntimeParameters(map);
                     if (!map.containsKey(PROTOCOL_KEY)) {
+                        // 如果没有指定协议，默认dubbo协议
                         map.put(PROTOCOL_KEY, DUBBO_PROTOCOL);
                     }
+                    // 生成注册中心的URL
+                    // 例如zookeeper://127.0.0.1:2181/org.apache.dubbo.registry.RegistryService?
+                    //  REGISTRY_CLUSTER=registryConfig
+                    //  &application=dubbo-study-provider
+                    //  &backup=127.0.0.1:2182,127.0.0.1:2183
+                    //  &dubbo=2.0.2
+                    //  &pid=16494
+                    //  &qos.enable=false
+                    //  &register-mode=all
+                    //  &release=3.1.0
+                    //  &timestamp=1663510947021
                     List<URL> urls = UrlUtils.parseURLs(address, map);
 
                     for (URL url : urls) {
@@ -222,12 +242,14 @@ public class ConfigValidationUtils {
                             .build();
                         // provider delay register state will be checked in RegistryProtocol#export
                         if (provider || url.getParameter(SUBSCRIBE_KEY, true)) {
+                            // 保存注册中心地址
                             registryList.add(url);
                         }
                     }
                 }
             }
         }
+        // 生成兼容的注册中心地址，dubbo3.0增加了应用级别的服务注册，本来时接口级别的服务注册
         return genCompatibleRegistries(interfaceConfig.getScopeModel(), registryList, provider);
     }
 
@@ -235,9 +257,12 @@ public class ConfigValidationUtils {
         List<URL> result = new ArrayList<>(registryList.size());
         registryList.forEach(registryURL -> {
             if (provider) {
+                // 是服务提供者
                 // for registries enabled service discovery, automatically register interface compatible addresses.
                 String registerMode;
                 if (SERVICE_REGISTRY_PROTOCOL.equals(registryURL.getProtocol())) {
+                    // 服务注册协议是service-discovery-registry
+                    // 获取服务注册模式，register-mode：interface、instance、all，默认应用级别注册
                     registerMode = registryURL.getParameter(REGISTER_MODE_KEY, ConfigurationUtils.getCachedDynamicProperty(scopeModel, DUBBO_REGISTER_MODE_DEFAULT_KEY, DEFAULT_REGISTER_MODE_INSTANCE));
                     if (!isValidRegisterMode(registerMode)) {
                         registerMode = DEFAULT_REGISTER_MODE_INSTANCE;
@@ -245,6 +270,7 @@ public class ConfigValidationUtils {
                     result.add(registryURL);
                     if (DEFAULT_REGISTER_MODE_ALL.equalsIgnoreCase(registerMode)
                         && registryNotExists(registryURL, registryList, REGISTRY_PROTOCOL)) {
+                        // 注册模式是all，并且没有配置接口级别的注册类型，添加一个接口级别的注册URL
                         URL interfaceCompatibleRegistryURL = URLBuilder.from(registryURL)
                             .setProtocol(REGISTRY_PROTOCOL)
                             .removeParameter(REGISTRY_TYPE_KEY)
@@ -252,12 +278,17 @@ public class ConfigValidationUtils {
                         result.add(interfaceCompatibleRegistryURL);
                     }
                 } else {
+                    // 其他类型的服务注册协议
+                    // 获取服务注册模式，register-mode：interface、instance、all，默认是all
                     registerMode = registryURL.getParameter(REGISTER_MODE_KEY, ConfigurationUtils.getCachedDynamicProperty(scopeModel, DUBBO_REGISTER_MODE_DEFAULT_KEY, DEFAULT_REGISTER_MODE_ALL));
                     if (!isValidRegisterMode(registerMode)) {
+                        // 注册模式不正确，使用接口级别的注册
                         registerMode = DEFAULT_REGISTER_MODE_INTERFACE;
                     }
                     if ((DEFAULT_REGISTER_MODE_INSTANCE.equalsIgnoreCase(registerMode) || DEFAULT_REGISTER_MODE_ALL.equalsIgnoreCase(registerMode))
                         && registryNotExists(registryURL, registryList, SERVICE_REGISTRY_PROTOCOL)) {
+                        // 注册模式是应用级别或者all，并且不存在service-discovery-registry注册类型
+                        // 默认添加一个service-discovery-registry类型的注册URL
                         URL serviceDiscoveryRegistryURL = URLBuilder.from(registryURL)
                             .setProtocol(SERVICE_REGISTRY_PROTOCOL)
                             .removeParameter(REGISTRY_TYPE_KEY)
@@ -273,6 +304,7 @@ public class ConfigValidationUtils {
                 FrameworkStatusReportService reportService = ScopeModelUtil.getApplicationModel(scopeModel).getBeanFactory().getBean(FrameworkStatusReportService.class);
                 reportService.reportRegistrationStatus(reportService.createRegistrationReport(registerMode));
             } else {
+                // 非provider，不做兼容性处理
                 result.add(registryURL);
             }
         });

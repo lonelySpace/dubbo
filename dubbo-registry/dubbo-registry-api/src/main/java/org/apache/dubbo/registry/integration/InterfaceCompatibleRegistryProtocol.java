@@ -36,9 +36,14 @@ public class InterfaceCompatibleRegistryProtocol extends RegistryProtocol {
 
     @Override
     protected URL getRegistryUrl(Invoker<?> originInvoker) {
+        // 从ProxyInvoker中获取url
         URL registryUrl = originInvoker.getUrl();
         if (REGISTRY_PROTOCOL.equals(registryUrl.getProtocol())) {
+            // 通过RegistryProtocol进来的
+            // 获取注册中心协议，这个参数是在将RegistryConfig转换成registryUrl时做的，
+            // RegistryConfig中配置的是具体的注册中心，而registryUrl是一个通用的服务注册协议
             String protocol = registryUrl.getParameter(REGISTRY_KEY, DEFAULT_REGISTRY);
+            // URL设置过后返回的是个新对象，不会影响原来的
             registryUrl = registryUrl.setProtocol(protocol).removeParameter(REGISTRY_KEY);
         }
         return registryUrl;
