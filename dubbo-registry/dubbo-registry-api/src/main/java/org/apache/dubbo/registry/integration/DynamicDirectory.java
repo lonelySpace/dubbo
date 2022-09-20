@@ -176,7 +176,9 @@ public abstract class DynamicDirectory<T> extends AbstractDirectory<T> implement
     }
 
     public void subscribe(URL url) {
+        // 设置订阅URL
         setSubscribeUrl(url);
+        // 订阅
         registry.subscribe(url, this);
     }
 

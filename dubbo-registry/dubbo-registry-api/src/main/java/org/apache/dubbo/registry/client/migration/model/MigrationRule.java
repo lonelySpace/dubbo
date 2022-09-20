@@ -182,8 +182,13 @@ public class MigrationRule {
          * FIXME, it's really hard to follow setting default values here.
          */
         if (step == null) {
+            // 默认APPLICATION_FIRST
             // initial step : APPLICATION_FIRST
             step = MigrationStep.APPLICATION_FIRST;
+            // 从参数migration.step中获取迁移规则（优先级最高）
+            // 从参数dubbo.application.migration.step获取迁移规则
+            // 从参数dubbo.application.service-discovery.migration获取迁移规则
+            // 默认APPLICATION_FIRST
             step = Enum.valueOf(MigrationStep.class,
                 consumerURL.getParameter(MIGRATION_STEP_KEY, getDefaultStep(consumerURL, step.name())));
         }

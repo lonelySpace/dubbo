@@ -241,6 +241,8 @@ public class RegistryProtocol implements Protocol, ScopeModelAware {
 
         // url to registry
         // 获取注册中心，以zookeeper举例
+        // 接口级别的注册中ZookeeperRegistry
+        // 应用级别的注册中心ServiceDiscoveryRegistry，内部有一个ZookeeperServiceDiscovery
         final Registry registry = getRegistry(registryUrl);
         // 获取暴露到注册中心的服务地址
         final URL registeredProviderUrl = getUrlToRegistry(providerUrl, registryUrl);
@@ -260,6 +262,7 @@ public class RegistryProtocol implements Protocol, ScopeModelAware {
         exporter.setSubscribeUrl(overrideSubscribeUrl);
 
         if (!registry.isServiceDiscovery()) {
+            // 非ServiceDiscovery会直接订阅
             // Deprecated! Subscribe to override rules in 2.6.x or before.
             // 以zk记录，订阅之后触发通知，然后保存配置
             registry.subscribe(overrideSubscribeUrl, overrideSubscribeListener);
@@ -395,6 +398,7 @@ public class RegistryProtocol implements Protocol, ScopeModelAware {
      * @return
      */
     protected Registry getRegistry(final URL registryUrl) {
+        // 通过RegistryFactory扩展点获取对应的RegistryFactory
         RegistryFactory registryFactory = ScopeModelUtil.getExtensionLoader(RegistryFactory.class, registryUrl.getScopeModel()).getAdaptiveExtension();
         return registryFactory.getRegistry(registryUrl);
     }
@@ -407,6 +411,7 @@ public class RegistryProtocol implements Protocol, ScopeModelAware {
         if (SERVICE_REGISTRY_PROTOCOL.equals(url.getProtocol())) {
             return url;
         }
+        // 非service-discovery-registry协议设置成service-discovery-registry协议，并将原协议保存到registry参数中
         return url.addParameter(REGISTRY_KEY, url.getProtocol()).setProtocol(SERVICE_REGISTRY_PROTOCOL);
     }
 
@@ -474,21 +479,26 @@ public class RegistryProtocol implements Protocol, ScopeModelAware {
     @Override
     @SuppressWarnings("unchecked")
     public <T> Invoker<T> refer(Class<T> type, URL url) throws RpcException {
+        // 获取注册URL
         url = getRegistryUrl(url);
+        // 获取注册中心
         Registry registry = getRegistry(url);
         if (RegistryService.class.equals(type)) {
             return proxyFactory.getInvoker((T) registry, type, url);
         }
 
         // group="a,b" or group="*"
+        // 获取引用参数
         Map<String, String> qs = (Map<String, String>) url.getAttribute(REFER_KEY);
+        // 获取group参数
         String group = qs.get(GROUP_KEY);
         if (StringUtils.isNotEmpty(group)) {
             if ((COMMA_SPLIT_PATTERN.split(group)).length > 1 || "*".equals(group)) {
+                // group 不为空使用mergeable cluster
                 return doRefer(Cluster.getCluster(url.getScopeModel(), MergeableCluster.NAME), registry, type, url, qs);
             }
         }
-
+        // group为空使用cluster参数指定的cluster，或者默认的failover cluster
         Cluster cluster = Cluster.getCluster(url.getScopeModel(), qs.get(CLUSTER_KEY));
         return doRefer(cluster, registry, type, url, qs);
     }
@@ -496,7 +506,9 @@ public class RegistryProtocol implements Protocol, ScopeModelAware {
     protected <T> Invoker<T> doRefer(Cluster cluster, Registry registry, Class<T> type, URL url, Map<String, String> parameters) {
         Map<String, Object> consumerAttribute = new HashMap<>(url.getAttributes());
         consumerAttribute.remove(REFER_KEY);
+        // 获取协议
         String p = isEmpty(parameters.get(PROTOCOL_KEY)) ? CONSUMER : parameters.get(PROTOCOL_KEY);
+        // 构建URL
         URL consumerUrl = new ServiceConfigURL (
             p,
             null,
@@ -507,6 +519,7 @@ public class RegistryProtocol implements Protocol, ScopeModelAware {
             consumerAttribute
         );
         url = url.putAttribute(CONSUMER_URL_KEY, consumerUrl);
+        // 获取migration invoker
         ClusterInvoker<T> migrationInvoker = getMigrationInvoker(this, cluster, registry, type, url, consumerUrl);
         return interceptInvoker(migrationInvoker, url, consumerUrl);
     }
@@ -532,12 +545,15 @@ public class RegistryProtocol implements Protocol, ScopeModelAware {
      * @return The @param MigrationInvoker passed in
      */
     protected <T> Invoker<T> interceptInvoker(ClusterInvoker<T> invoker, URL url, URL consumerUrl) {
+        // 通过RegistryProtocolListener扩展点获取RegistryProtocolListener集合
+        // 通过参数registry.protocol.listener配置激活的RegistryProtocolListener
         List<RegistryProtocolListener> listeners = findRegistryProtocolListeners(url);
         if (CollectionUtils.isEmpty(listeners)) {
             return invoker;
         }
 
         for (RegistryProtocolListener listener : listeners) {
+            // 触发onRefer方法
             listener.onRefer(this, invoker, consumerUrl, url);
         }
         return invoker;
@@ -550,15 +566,20 @@ public class RegistryProtocol implements Protocol, ScopeModelAware {
 
     public <T> ClusterInvoker<T> getInvoker(Cluster cluster, Registry registry, Class<T> type, URL url) {
         // FIXME, this method is currently not used, create the right registry before enable.
+        // 创建DynamicDirectory
         DynamicDirectory<T> directory = new RegistryDirectory<>(type, url);
+        // 创建invoker
         return doCreateInvoker(directory, cluster, registry, type);
     }
 
     protected <T> ClusterInvoker<T> doCreateInvoker(DynamicDirectory<T> directory, Cluster cluster, Registry registry, Class<T> type) {
+        // 设置registry
         directory.setRegistry(registry);
+        // 设置protocol
         directory.setProtocol(protocol);
         // all attributes of REFER_KEY
         Map<String, String> parameters = new HashMap<>(directory.getConsumerUrl().getParameters());
+        // 构建消费者注册URL
         URL urlToRegistry = new ServiceConfigURL(
             parameters.get(PROTOCOL_KEY) == null ? CONSUMER : parameters.get(PROTOCOL_KEY),
             parameters.remove(REGISTER_IP_KEY),
@@ -566,13 +587,18 @@ public class RegistryProtocol implements Protocol, ScopeModelAware {
             getPath(parameters, type),
             parameters
         );
+        // 添加scopeModel参数
         urlToRegistry = urlToRegistry.setScopeModel(directory.getConsumerUrl().getScopeModel());
+        // 添加serviceModel参数
         urlToRegistry = urlToRegistry.setServiceModel(directory.getConsumerUrl().getServiceModel());
         if (directory.isShouldRegister()) {
+            // 注册消费者
             directory.setRegisteredConsumerUrl(urlToRegistry);
             registry.register(directory.getRegisteredConsumerUrl());
         }
+        // 构建router chain
         directory.buildRouterChain(urlToRegistry);
+        // 订阅，构建订阅URL
         directory.subscribe(toSubscribeUrl(urlToRegistry));
 
         return (ClusterInvoker<T>) cluster.join(directory, true);

@@ -457,6 +457,7 @@ public class MigrationInvoker<T> implements MigrationClusterInvoker<T> {
             if (invoker != null) {
                 invoker.destroy();
             }
+            // 获取invoker
             invoker = registryProtocol.getInvoker(cluster, registry, type, url);
         }
         setListener(invoker, () -> {

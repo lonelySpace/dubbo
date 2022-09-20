@@ -214,16 +214,21 @@ public class ReferenceConfig<T> extends ReferenceConfigBase<T> {
 
     @Override
     public T get() {
+        // 检查状态
         if (destroyed) {
             throw new IllegalStateException("The invoker of ReferenceConfig(" + url + ") has already destroyed!");
         }
 
+        // 服务引用对象为空
         if (ref == null) {
+            // 启动模块
             // ensure start module, compatible with old api usage
             getScopeModel().getDeployer().start();
 
             synchronized (this) {
+                // double check
                 if (ref == null) {
+                    // 初始化服务引用
                     init();
                 }
             }
@@ -255,21 +260,26 @@ public class ReferenceConfig<T> extends ReferenceConfigBase<T> {
     }
 
     protected synchronized void init() {
+        // 再次检查状态
         if (initialized && ref != null) {
             return;
         }
         try {
             if (!this.isRefreshed()) {
+                // 再次检查配置是否刷新
                 this.refresh();
             }
 
+            // 初始化消费者元数据
             // init serviceMetadata
             initServiceMetadata(consumer);
-
+            // 设置服务类型
             serviceMetadata.setServiceType(getServiceInterfaceClass());
             // TODO, uncomment this line once service key is unified
+            // 生成服务key
             serviceMetadata.generateServiceKey();
 
+            // 获取服务引用参数
             Map<String, String> referenceParameters = appendConfig();
             // init service-application mapping
             initServiceAppsMapping(referenceParameters);
@@ -282,6 +292,7 @@ public class ReferenceConfig<T> extends ReferenceConfigBase<T> {
             } else {
                 serviceDescriptor = repository.registerService(interfaceClass);
             }
+            // 创建consumer model
             consumerModel = new ConsumerModel(serviceMetadata.getServiceKey(), proxy, serviceDescriptor,
                     getScopeModel(), serviceMetadata, createAsyncMethodInfo(), interfaceClassLoader);
 
@@ -292,8 +303,10 @@ public class ReferenceConfig<T> extends ReferenceConfigBase<T> {
 
             serviceMetadata.getAttachments().putAll(referenceParameters);
 
+            // 创建服务引用对象
             ref = createProxy(referenceParameters);
 
+            // 设置服务引用对象
             serviceMetadata.setTarget(ref);
             serviceMetadata.addAttribute(PROXY_CLASS_REF, ref);
 
@@ -423,21 +436,25 @@ public class ReferenceConfig<T> extends ReferenceConfigBase<T> {
     @SuppressWarnings({"unchecked"})
     private T createProxy(Map<String, String> referenceParameters) {
         if (shouldJvmRefer(referenceParameters)) {
+            // 内部引用，创建本地invoker
             createInvokerForLocal(referenceParameters);
         } else {
             urls.clear();
 
             meshModeHandleUrl(referenceParameters);
 
+            // url是直连或者注册中心地址
             if (StringUtils.isNotEmpty(url)) {
                 // user specified URL, could be peer-to-peer address, or register center's address.
                 parseUrl(referenceParameters);
             } else {
                 // if protocols not in jvm checkRegistry
                 if (!LOCAL_PROTOCOL.equalsIgnoreCase(getProtocol())) {
+                    // 协议不是injvm，从registry config获取url列表
                     aggregateUrlFromRegistry(referenceParameters);
                 }
             }
+            // 创建远程invoker
             createInvokerForRemote();
         }
 
@@ -528,13 +545,18 @@ public class ReferenceConfig<T> extends ReferenceConfigBase<T> {
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private void createInvokerForLocal(Map<String, String> referenceParameters) {
+        // 构建service config url，即服务注册url，协议为injvm
         URL url = new ServiceConfigURL(LOCAL_PROTOCOL, LOCALHOST_VALUE, 0, interfaceClass.getName(), referenceParameters);
         url = url.setScopeModel(getScopeModel());
         url = url.setServiceModel(consumerModel);
+        // 通过Protocol扩展点获取服务引用对象 invoker
         Invoker<?> withFilter = protocolSPI.refer(interfaceClass, url);
         // Local Invoke ( Support Cluster Filter / Filter )
         List<Invoker<?>> invokers = new ArrayList<>();
         invokers.add(withFilter);
+        // 构建cluster invoker，内部可以包含多个invoker，当然这里只有一个
+        // 集群策略默认是failover，即FailoverCluster
+        // AbstractClusterInvoker内部有一个Directory
         invoker = Cluster.getCluster(url.getScopeModel(), Cluster.DEFAULT).join(new StaticDirectory(url, invokers), true);
 
         if (logger.isInfoEnabled()) {
@@ -598,7 +620,10 @@ public class ReferenceConfig<T> extends ReferenceConfigBase<T> {
     @SuppressWarnings({"unchecked", "rawtypes"})
     private void createInvokerForRemote() {
         if (urls.size() == 1) {
+            // 单注册中心
             URL curUrl = urls.get(0);
+            // 通过Protocol 扩展点获取服务引用invoker
+            // 以registry协议为例
             invoker = protocolSPI.refer(interfaceClass, curUrl);
             // registry url, mesh-enable and unloadClusterRelated is true, not need Cluster.
             if (!UrlUtils.isRegistry(curUrl) &&
@@ -608,6 +633,7 @@ public class ReferenceConfig<T> extends ReferenceConfigBase<T> {
                 invoker = Cluster.getCluster(scopeModel, Cluster.DEFAULT).join(new StaticDirectory(curUrl, invokers), true);
             }
         } else {
+            // 多注册中心
             List<Invoker<?>> invokers = new ArrayList<>();
             URL registryUrl = null;
             for (URL url : urls) {

@@ -115,6 +115,7 @@ public class ServiceDiscoveryRegistryDirectory<T> extends DynamicDirectory<T> {
     @Override
     public void subscribe(URL url) {
         if (moduleModel.getModelEnvironment().getConfiguration().convert(Boolean.class, Constants.ENABLE_CONFIGURATION_LISTEN, true)) {
+            // 默认开启配置监听器
             enableConfigurationListen = true;
             getConsumerConfigurationListener(moduleModel).addNotifyListener(this);
             referenceConfigurationListener = new ReferenceConfigurationListener(this.moduleModel, this, url);

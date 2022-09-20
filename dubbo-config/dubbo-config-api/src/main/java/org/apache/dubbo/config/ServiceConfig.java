@@ -367,7 +367,7 @@ public class ServiceConfig<T> extends ServiceConfigBase<T> {
             // 使用接口名作为服务名
             path = interfaceName;
         }
-        // 获取暴露的服务地址
+        // 服务暴露、服务注册
         doExportUrls();
         exported();
     }

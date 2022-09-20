@@ -222,6 +222,8 @@ public abstract class AbstractServiceDiscovery implements ServiceDiscovery {
 
     @Override
     public void register(URL url) {
+        // 元数据信息中添加服务注册URL
+        // 信息直接保存在内存中
         metadataInfo.addService(url);
     }
 
@@ -232,6 +234,7 @@ public abstract class AbstractServiceDiscovery implements ServiceDiscovery {
 
     @Override
     public void subscribe(URL url, NotifyListener listener) {
+        // 添加订阅URL
         metadataInfo.addSubscribedURL(url);
     }
 

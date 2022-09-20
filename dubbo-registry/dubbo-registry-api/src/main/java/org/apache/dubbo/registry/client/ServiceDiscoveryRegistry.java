@@ -181,13 +181,14 @@ public class ServiceDiscoveryRegistry extends FailbackRegistry {
         if (!shouldSubscribe(url)) { // Should Not Subscribe
             return;
         }
+        // 订阅
         doSubscribe(url, listener);
     }
 
     @Override
     public void doSubscribe(URL url, NotifyListener listener) {
         url = addRegistryClusterKey(url);
-
+        // service discovery类型的订阅
         serviceDiscovery.subscribe(url, listener);
 
         boolean check = url.getParameter(CHECK_KEY, false);
@@ -229,6 +230,7 @@ public class ServiceDiscoveryRegistry extends FailbackRegistry {
     }
 
     private URL addRegistryClusterKey(URL url) {
+        // 添加REGISTRY_CLUSTER参数
         String registryCluster = serviceDiscovery.getUrl().getParameter(REGISTRY_CLUSTER_KEY);
         if (registryCluster != null && url.getParameter(REGISTRY_CLUSTER_KEY) == null) {
             url = url.addParameter(REGISTRY_CLUSTER_KEY, registryCluster);

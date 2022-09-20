@@ -28,10 +28,13 @@ public class ServiceDiscoveryRegistryFactory extends AbstractRegistryFactory {
 
     @Override
     protected Registry createRegistry(URL url) {
+        // service-discovery-registry协议
         if (UrlUtils.hasServiceDiscoveryRegistryProtocol(url)) {
+            // 将协议转换成原来的协议
             String protocol = url.getParameter(REGISTRY_KEY, DEFAULT_REGISTRY);
             url = url.setProtocol(protocol).removeParameter(REGISTRY_KEY);
         }
+        // 创建ServiceDiscoverRegistry
         return new ServiceDiscoveryRegistry(url, applicationModel);
     }
 

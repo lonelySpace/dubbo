@@ -108,13 +108,15 @@ public class SimpleReferenceCache implements ReferenceCache {
     @Override
     @SuppressWarnings("unchecked")
     public <T> T get(ReferenceConfigBase<T> rc) {
+        // 生成缓存key，通过接口名称、group、version组成
         String key = generator.generateKey(rc);
         Class<?> type = rc.getInterfaceClass();
-
+        // 是否是单例的
         boolean singleton = rc.getSingleton() == null || rc.getSingleton();
         T proxy = null;
         // Check existing proxy of the same 'key' and 'type' first.
         if (singleton) {
+            // 获取服务引用对象
             proxy = get(key, (Class<T>) type);
         } else {
             logger.warn("Using non-singleton ReferenceConfig and ReferenceCache at the same time may cause memory leak. " +
@@ -126,6 +128,7 @@ public class SimpleReferenceCache implements ReferenceCache {
             referencesOfType.add(rc);
             List<ReferenceConfigBase<?>> referenceConfigList = referenceKeyMap.computeIfAbsent(key, _k -> Collections.synchronizedList(new ArrayList<>()));
             referenceConfigList.add(rc);
+            // 通过ReferenceConfig重新获取服务引用对象
             proxy = rc.get();
         }
 

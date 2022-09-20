@@ -156,6 +156,11 @@ public class ZookeeperRegistry extends CacheableFailbackRegistry {
     public void doRegister(URL url) {
         try {
             checkDestroyed();
+            // zk创建节点， dynamic为true创建临时节点，默认创建临时节点,叶子节点才是临时节点，父级节点都是持久化节点
+            // URL：/dubbo/com.liujiawei.dubbo.study.api.EchoService/providers/dubbo%3A%2F%2F172.20.10.2%3A20881%2Fcom.liujiawei.dubbo.study.api.EchoService%3Fanyhost%3Dtrue%26application%3Ddubbo-study-provider%26background%3Dfalse%26deprecated%3Dfalse%26dubbo%3D2.0.2%26dynamic%3Dtrue%26generic%3Dfalse%26interface%3Dcom.liujiawei.dubbo.study.api.EchoService%26methods%3Decho%26pid%3D17401%26release%3D3.1.0%26scope%3Dremote%26service-name-mapping%3Dtrue%26side%3Dprovider%26timestamp%3D1663555831992
+            // URL：/协议/contextPath/providers/encode（url）
+            // 因此服务注册是在注册中心注册了providers节点下的信息
+            // 这是接口级别的服务注册
             zkClient.create(toUrlPath(url), url.getParameter(DYNAMIC_KEY, true));
         } catch (Throwable e) {
             throw new RpcException("Failed to register " + url + " to zookeeper " + getUrl() + ", cause: " + e.getMessage(), e);

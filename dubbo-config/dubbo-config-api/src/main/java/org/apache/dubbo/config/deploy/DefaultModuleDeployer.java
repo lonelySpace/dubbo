@@ -95,14 +95,18 @@ public class DefaultModuleDeployer extends AbstractDeployer<ModuleModel> impleme
 
     @Override
     public void initialize() throws IllegalStateException {
+        // 检查状态
         if (initialized) {
             return;
         }
         // Ensure that the initialization is completed when concurrent calls
         synchronized (this) {
+            // 双重检查
             if (initialized) {
                 return;
             }
+            // 加载ModuleModel的配置
+            // 只有ModuleConfig、ProviderConfig、ConsumerConfig
             loadConfigs();
 
             // read ModuleConfig
@@ -127,8 +131,10 @@ public class DefaultModuleDeployer extends AbstractDeployer<ModuleModel> impleme
     @Override
     public Future start() throws IllegalStateException {
         // initialize，maybe deadlock applicationDeployer lock & moduleDeployer lock
+        // 初始化ApplicationDeployer
         applicationDeployer.initialize();
 
+        // 同步启动
         return startSync();
     }
 
@@ -144,11 +150,14 @@ public class DefaultModuleDeployer extends AbstractDeployer<ModuleModel> impleme
                 return startFuture;
             }
 
+            // 修改module状态为STARTING
+            // 触发DeployListener监听器的onStarting方法
             onModuleStarting();
 
-
+            // 初始化ModuleConfig
             initialize();
 
+            // 导出服务
             // export services
             exportServices();
 
@@ -158,22 +167,27 @@ public class DefaultModuleDeployer extends AbstractDeployer<ModuleModel> impleme
                 applicationDeployer.prepareInternalModule();
             }
 
+            // 服务引用
             // refer services
             referServices();
 
             // if no async export/refer services, just set started
             if (asyncExportingFutures.isEmpty() && asyncReferringFutures.isEmpty()) {
+                // 没有服务引用，也没有导出服务，直接将状态设置为STARTED
                 onModuleStarted();
             } else {
                 frameworkExecutorRepository.getSharedExecutor().submit(() -> {
                     try {
                         // wait for export finish
+                        // 等待服务导出完成
                         waitExportFinish();
                         // wait for refer finish
+                        // 等待服务引用完成
                         waitReferFinish();
                     } catch (Throwable e) {
                         logger.warn("wait for export/refer services occurred an exception", e);
                     } finally {
+                        // 状态设置为STARTED
                         onModuleStarted();
                     }
                 });
@@ -245,17 +259,24 @@ public class DefaultModuleDeployer extends AbstractDeployer<ModuleModel> impleme
     }
 
     private void onModuleStarting() {
+        // 修改状态为STARTING
+        // 触发DeployerListener的onStarting方法
         setStarting();
         startFuture = new CompletableFuture();
         logger.info(getIdentifier() + " is starting.");
+        // ApplicationDeployer通知module状态改变
         applicationDeployer.notifyModuleChanged(moduleModel, DeployState.STARTING);
     }
 
     private void onModuleStarted() {
         try {
+            // 检查状态是否是STARTING
             if (isStarting()) {
+                // 将状态设置为STARTED
+                // 触发DeployedListener的onStarted方法
                 setStarted();
                 logger.info(getIdentifier() + " has started.");
+                // 确保状态设置为STARTED
                 applicationDeployer.notifyModuleChanged(moduleModel, DeployState.STARTED);
             }
         } finally {
@@ -316,7 +337,7 @@ public class DefaultModuleDeployer extends AbstractDeployer<ModuleModel> impleme
      * 进行服务暴露
      */
     private void exportServices() {
-        // 遍历每一份服务配置，进行服务暴露
+        // 遍历每一份服务配置，导出服务
         for (ServiceConfigBase sc : configManager.getServices()) {
             exportServiceInternal(sc);
         }
@@ -380,18 +401,24 @@ public class DefaultModuleDeployer extends AbstractDeployer<ModuleModel> impleme
     }
 
     private void referServices() {
+        // 处理每一个服务引用
         configManager.getReferences().forEach(rc -> {
             try {
+                // 服务引用配置
                 ReferenceConfig<?> referenceConfig = (ReferenceConfig<?>) rc;
                 if (!referenceConfig.isRefreshed()) {
+                    // 刷新服务引用配置
                     referenceConfig.refresh();
                 }
 
+                // 判断是否需要初始化
                 if (rc.shouldInit()) {
+                    // 是否需要异步初始化引用服务
                     if (referAsync || rc.shouldReferAsync()) {
                         ExecutorService executor = executorRepository.getServiceReferExecutor();
                         CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
                             try {
+                                // 获取服务引用
                                 referenceCache.get(rc);
                             } catch (Throwable t) {
                                 logger.error("5-9", "", "", "Failed to async export service config: " + getIdentifier() + " , catch error : " + t.getMessage(), t);
@@ -400,6 +427,7 @@ public class DefaultModuleDeployer extends AbstractDeployer<ModuleModel> impleme
 
                         asyncReferringFutures.add(future);
                     } else {
+                        // 获取服务引用
                         referenceCache.get(rc);
                     }
                 }

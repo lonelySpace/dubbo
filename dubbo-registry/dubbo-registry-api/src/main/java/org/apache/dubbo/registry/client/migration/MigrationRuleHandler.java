@@ -39,16 +39,20 @@ public class MigrationRuleHandler<T> {
 
     public synchronized void doMigrate(MigrationRule rule) {
         if (migrationInvoker instanceof ServiceDiscoveryMigrationInvoker) {
+            // 如果是ServiceDiscoveryMigrationInvoker，走FORCE_APPLICATION规则
             refreshInvoker(MigrationStep.FORCE_APPLICATION, 1.0f, rule);
             return;
         }
 
+        // 默认APPLICATION_FIRST规则
         // initial step : APPLICATION_FIRST
         MigrationStep step = MigrationStep.APPLICATION_FIRST;
         float threshold = -1f;
 
         try {
+            // 从consumer url中获取迁移规则
             step = rule.getStep(consumerURL);
+            // 从consumer url中获取迁移权重
             threshold = rule.getThreshold(consumerURL);
         } catch (Exception e) {
             logger.error("Failed to get step and threshold info from rule: " + rule, e);
@@ -61,6 +65,7 @@ public class MigrationRuleHandler<T> {
     }
 
     private boolean refreshInvoker(MigrationStep step, Float threshold, MigrationRule newRule) {
+        // 根据迁移规则刷新invoker
         if (step == null || threshold == null) {
             throw new IllegalStateException("Step or threshold of migration rule cannot be null");
         }
@@ -70,13 +75,16 @@ public class MigrationRuleHandler<T> {
             boolean success = true;
             switch (step) {
                 case APPLICATION_FIRST:
+                    // APPLICATION_FIRST
                     migrationInvoker.migrateToApplicationFirstInvoker(newRule);
                     break;
                 case FORCE_APPLICATION:
+                    // FORCE_APPLICATION
                     success = migrationInvoker.migrateToForceApplicationInvoker(newRule);
                     break;
                 case FORCE_INTERFACE:
                 default:
+                    // FORCE_APPLICATION
                     success = migrationInvoker.migrateToForceInterfaceInvoker(newRule);
             }
 

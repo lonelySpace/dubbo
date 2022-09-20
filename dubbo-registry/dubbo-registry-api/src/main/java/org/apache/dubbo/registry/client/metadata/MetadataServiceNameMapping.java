@@ -114,6 +114,7 @@ public class MetadataServiceNameMapping extends AbstractServiceNameMapping {
         if (metadataReport == null) {
             return Collections.emptySet();
         }
+        // 获取应用注册信息
         return metadataReport.getServiceAppMapping(serviceInterface, url);
     }
 
