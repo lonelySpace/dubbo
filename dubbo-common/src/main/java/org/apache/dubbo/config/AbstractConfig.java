@@ -669,16 +669,20 @@ public abstract class AbstractConfig implements Serializable {
             String preferredPrefix = null;
             List<String> prefixes = getPrefixes();
             for (String prefix : prefixes) {
+                // 哪个前缀下有配置，就用哪个前缀
                 if (ConfigurationUtils.hasSubProperties(configurationMaps, prefix)) {
                     preferredPrefix = prefix;
                     break;
                 }
             }
             if (preferredPrefix == null) {
+                // 默认取第一个
                 preferredPrefix = prefixes.get(0);
             }
             // Extract sub props (which key was starts with preferredPrefix)
+            // 获取前缀对应的配置集合
             Collection<Map<String, String>> instanceConfigMaps = environment.getConfigurationMaps(this, preferredPrefix);
+            // 获取配置
             Map<String, String> subProperties = ConfigurationUtils.getSubProperties(instanceConfigMaps, preferredPrefix);
             InmemoryConfiguration subPropsConfiguration = new InmemoryConfiguration(subProperties);
 
@@ -697,6 +701,7 @@ public abstract class AbstractConfig implements Serializable {
                     "], extracted props: " + subProperties);
             }
 
+            // 给XxxConfig类赋值
             assignProperties(this, environment, subProperties, subPropsConfiguration);
 
             // process extra refresh of subclass, e.g. refresh method configs

@@ -109,9 +109,13 @@ public class DefaultApplicationDeployer extends AbstractDeployer<ApplicationMode
     private final Object internalModuleLock = new Object();
 
     public DefaultApplicationDeployer(ApplicationModel applicationModel) {
+        // 设置ScopeModel
         super(applicationModel);
+        // 设置ApplicationModel
         this.applicationModel = applicationModel;
+        // 获取ConfigManager
         configManager = applicationModel.getApplicationConfigManager();
+        // 获取Environment
         environment = applicationModel.getModelEnvironment();
 
         referenceCache = new CompositeReferenceCache(applicationModel);
@@ -120,6 +124,7 @@ public class DefaultApplicationDeployer extends AbstractDeployer<ApplicationMode
         dubboShutdownHook = new DubboShutdownHook(applicationModel);
 
         // load spi listener
+        // 通过dubbo spi获取所有ApplicationDeployListener
         Set<ApplicationDeployListener> deployListeners = applicationModel.getExtensionLoader(ApplicationDeployListener.class)
             .getSupportedExtensionInstances();
         for (ApplicationDeployListener listener : deployListeners) {
@@ -171,24 +176,33 @@ public class DefaultApplicationDeployer extends AbstractDeployer<ApplicationMode
      */
     @Override
     public void initialize() {
+        // 检查状态
         if (initialized) {
             return;
         }
         // Ensure that the initialization is completed when concurrent calls
+        // ApplicationDeployer级别的锁，避免并发
         synchronized (startLock) {
+            // 双重检查
             if (initialized) {
                 return;
             }
             // register shutdown hook
+            // 注册钩子
             registerShutdownHook();
 
+            // 启动配置中心
+            // 如果存在远程配置中心，这个时候配置已经从远程配置中心拉取下来了
             startConfigCenter();
 
+            // 再次加载所有的配置，这个时候配置已经是全的了
             loadApplicationConfigs();
 
+            // 初始化ModuleDeployers
             initModuleDeployers();
 
             // @since 2.7.8
+            // 启动元数据中心
             startMetadataCenter();
 
             initialized = true;
@@ -208,6 +222,7 @@ public class DefaultApplicationDeployer extends AbstractDeployer<ApplicationMode
         applicationModel.getDefaultModule();
         // copy modules and initialize avoid ConcurrentModificationException if add new module
         List<ModuleModel> moduleModels = new ArrayList<>(applicationModel.getModuleModels());
+        // 初始化每一个ModuleDeployer
         for (ModuleModel moduleModel : moduleModels) {
             moduleModel.getDeployer().initialize();
         }
@@ -220,6 +235,9 @@ public class DefaultApplicationDeployer extends AbstractDeployer<ApplicationMode
     private void startConfigCenter() {
 
         // load application config
+        // 从ConfigManager加载ApplicationConfig
+        // 加载的是dubbo.application.开头的配置信息
+        // 先加载application下的配置，没有的话再从全局配置信息中加载
         configManager.loadConfigsOfTypeFromProps(ApplicationConfig.class);
 
         // try set model name
@@ -228,22 +246,28 @@ public class DefaultApplicationDeployer extends AbstractDeployer<ApplicationMode
         }
 
         // load config centers
+        // 加载的是dubbo.config-center.开头的配置信息
         configManager.loadConfigsOfTypeFromProps(ConfigCenterConfig.class);
 
+        // 是否需要将注册中心作为配置中心
         useRegistryAsConfigCenterIfNecessary();
 
         // check Config Center
         Collection<ConfigCenterConfig> configCenters = configManager.getConfigCenters();
         if (CollectionUtils.isEmpty(configCenters)) {
+            // 不存在配置中心，创建一个空的配置中心
             ConfigCenterConfig configCenterConfig = new ConfigCenterConfig();
             configCenterConfig.setScopeModel(applicationModel);
+            // 加载配置
             configCenterConfig.refresh();
             ConfigValidationUtils.validateConfigCenterConfig(configCenterConfig);
             if (configCenterConfig.isValid()) {
+                // 添加到ConfigManager中
                 configManager.addConfigCenter(configCenterConfig);
                 configCenters = configManager.getConfigCenters();
             }
         } else {
+            // 多配置中心
             for (ConfigCenterConfig configCenterConfig : configCenters) {
                 configCenterConfig.refresh();
                 ConfigValidationUtils.validateConfigCenterConfig(configCenterConfig);
@@ -254,10 +278,12 @@ public class DefaultApplicationDeployer extends AbstractDeployer<ApplicationMode
             CompositeDynamicConfiguration compositeDynamicConfiguration = new CompositeDynamicConfiguration();
             for (ConfigCenterConfig configCenter : configCenters) {
                 // Pass config from ConfigCenterBean to environment
+                // 将ConfigCenter中的配置信息更新到environment中
                 environment.updateExternalConfigMap(configCenter.getExternalConfiguration());
                 environment.updateAppExternalConfigMap(configCenter.getAppExternalConfiguration());
 
                 // Fetch config from remote config center
+                // 从远程配置中心拉取配置，保存到CompositeDynamicConfiguration中
                 compositeDynamicConfiguration.addConfiguration(prepareEnvironment(configCenter));
             }
             environment.setDynamicConfiguration(compositeDynamicConfiguration);
@@ -266,26 +292,35 @@ public class DefaultApplicationDeployer extends AbstractDeployer<ApplicationMode
 
     private void startMetadataCenter() {
 
+        // 是否需要将注册中心作为元数据中心
         useRegistryAsMetadataCenterIfNecessary();
 
+        // 获取ApplicationConfig
         ApplicationConfig applicationConfig = getApplication();
 
+        // 获取元数据类型
         String metadataType = applicationConfig.getMetadataType();
         // FIXME, multiple metadata config support.
+        // 获取所有的元数据中心配置
         Collection<MetadataReportConfig> metadataReportConfigs = configManager.getMetadataConfigs();
         if (CollectionUtils.isEmpty(metadataReportConfigs)) {
+            // 元数据中心配置为空，元数据类型就不能设置为remote
             if (REMOTE_METADATA_STORAGE_TYPE.equals(metadataType)) {
                 throw new IllegalStateException("No MetadataConfig found, Metadata Center address is required when 'metadata=remote' is enabled.");
             }
             return;
         }
 
+        // 获取元数据报告实例
         MetadataReportInstance metadataReportInstance = applicationModel.getBeanFactory().getBean(MetadataReportInstance.class);
         List<MetadataReportConfig> validMetadataReportConfigs = new ArrayList<>(metadataReportConfigs.size());
+        // 验证元数据中心配置，判断地址和协议是否正确
         for (MetadataReportConfig metadataReportConfig : metadataReportConfigs) {
             ConfigValidationUtils.validateMetadataConfig(metadataReportConfig);
             validMetadataReportConfigs.add(metadataReportConfig);
         }
+        // 初始化MetadataReportInstance
+        // 里面有多个MetadataReport，一个注册中心对应一个MetadataReport
         metadataReportInstance.init(validMetadataReportConfigs);
         if (!metadataReportInstance.inited()) {
             throw new IllegalStateException(String.format("%s MetadataConfigs found, but none of them is valid.", metadataReportConfigs.size()));
@@ -300,26 +335,35 @@ public class DefaultApplicationDeployer extends AbstractDeployer<ApplicationMode
     private void useRegistryAsConfigCenterIfNecessary() {
         // we use the loading status of DynamicConfiguration to decide whether ConfigCenter has been initiated.
         if (environment.getDynamicConfiguration().isPresent()) {
+            // DynamicConfiguration存在，说明已经处理过了
             return;
         }
 
         if (CollectionUtils.isNotEmpty(configManager.getConfigCenters())) {
+            // 已经存在配置中心了
             return;
         }
 
         // load registry
+        // 加载dubbo.registry.开头的配置信息
         configManager.loadConfigsOfTypeFromProps(RegistryConfig.class);
 
+        // 获取默认的注册中心
         List<RegistryConfig> defaultRegistries = configManager.getDefaultRegistries();
         if (defaultRegistries.size() > 0) {
             defaultRegistries
                 .stream()
+                // RegistryConfig中手动指定是否需要作为配置中心
+                // 获取根据注册中心的协议，判断是否存在对应的DynamicConfigurationFactory扩展点
                 .filter(this::isUsedRegistryAsConfigCenter)
+                // 通过注册中心配置生成配置中心配置
                 .map(this::registryAsConfigCenter)
                 .forEach(configCenter -> {
+                    // 判断是否已经存在
                     if (configManager.getConfigCenter(configCenter.getId()).isPresent()) {
                         return;
                     }
+                    // 添加
                     configManager.addConfigCenter(configCenter);
                     logger.info("use registry as config-center: " + configCenter);
 
@@ -365,20 +409,27 @@ public class DefaultApplicationDeployer extends AbstractDeployer<ApplicationMode
 
     private void useRegistryAsMetadataCenterIfNecessary() {
 
+        // 获取元数据中心配置
         Collection<MetadataReportConfig> metadataConfigs = configManager.getMetadataConfigs();
 
+        // 存在元数据中心配置
         if (CollectionUtils.isNotEmpty(metadataConfigs)) {
             return;
         }
 
+        // 获取默认的注册中心配置
         List<RegistryConfig> defaultRegistries = configManager.getDefaultRegistries();
         if (defaultRegistries.size() > 0) {
             defaultRegistries
                 .stream()
+                // 注册中心配置中手动指定作为元数据中心
+                // 或者判断MetadataReportFactory的扩展点是否支持当前注册中心作为元数据中心
                 .filter(this::isUsedRegistryAsMetadataCenter)
+                // 根据注册中心配置构建元数据中心配置
                 .map(this::registryAsMetadataCenter)
                 .forEach(metadataReportConfig -> {
                     if (metadataReportConfig.getId() == null) {
+                        // 元数据中心Id为空，获取配置的元数据中心，根据地址来判断是否是同一份配置
                         Collection<MetadataReportConfig> metadataReportConfigs = configManager.getMetadataConfigs();
                         if (CollectionUtils.isNotEmpty(metadataReportConfigs)) {
                             for (MetadataReportConfig existedConfig : metadataReportConfigs) {
@@ -387,8 +438,10 @@ public class DefaultApplicationDeployer extends AbstractDeployer<ApplicationMode
                                 }
                             }
                         }
+                        // 地址不相同，添加这份元数据中心配置
                         configManager.addMetadataReport(metadataReportConfig);
                     } else {
+                        // id不为空，根据id判断是否存在当前这份配置
                         Optional<MetadataReportConfig> configOptional = configManager.getConfig(MetadataReportConfig.class, metadataReportConfig.getId());
                         if (configOptional.isPresent()) {
                             return;
@@ -401,6 +454,9 @@ public class DefaultApplicationDeployer extends AbstractDeployer<ApplicationMode
     }
 
     private boolean isUsedRegistryAsMetadataCenter(RegistryConfig registryConfig) {
+        // 判断是否需要将注册中心作为元数据中心中心
+        // 注册中心配置中手动指定作为元数据中心
+        // 或者判断MetadataReportFactory的扩展点是否支持当前注册中心作为元数据中心
         return isUsedRegistryAsCenter(registryConfig, registryConfig::getUseAsMetadataCenter, "metadata",
             MetadataReportFactory.class);
     }
@@ -420,11 +476,15 @@ public class DefaultApplicationDeployer extends AbstractDeployer<ApplicationMode
                                            Class<?> extensionClass) {
         final boolean supported;
 
+        // RegistryConfig中手动指定是否作为配置中心或者元数据中心
         Boolean configuredValue = usedRegistryAsCenter.get();
         if (configuredValue != null) { // If configured, take its value.
             supported = configuredValue.booleanValue();
         } else {                       // Or check the extension existence
+            // 未指定
+            // 获取注册中心协议
             String protocol = registryConfig.getProtocol();
+            // 当前协议是否存在扩展点
             supported = supportsExtension(extensionClass, protocol);
             if (logger.isInfoEnabled()) {
                 logger.info(format("No value is configured in the registry, the %s extension[name : %s] %s as the %s center"
@@ -512,29 +572,41 @@ public class DefaultApplicationDeployer extends AbstractDeployer<ApplicationMode
 
             try {
                 // maybe call start again after add new module, check if any new module
+                // 获取当前ApplicationModel下所有的ModuleModels，遍历每一个ModuleModel中的ModuleDeployer
+                // 是否存在PENDING状态的ModuleDeployer
                 boolean hasPendingModule = hasPendingModule();
-
+                // 判断当前ApplicationDeployer是否是STARTING状态
                 if (isStarting()) {
                     // currently, is starting, maybe both start by module and application
                     // if it has new modules, start them
                     if (hasPendingModule) {
+                        // 存在PENDINFG状态的ModuleDeployer，启动所有ModuleModel
                         startModules();
                     }
                     // if it is starting, reuse previous startFuture
+                    // 返回之前的startFuture
                     return startFuture;
                 }
 
                 // if is started and no new module, just return
                 if (isStarted() && !hasPendingModule) {
+                    // ApplicationModel已经启动并且没有PENDING状态的Module直接返回
                     return CompletableFuture.completedFuture(false);
                 }
 
                 // pending -> starting : first start app
                 // started -> starting : re-start app
+                // 设置状态为STARTING，触发DeployerListener的onListen方法
                 onStarting();
-
+                // 初始化
+                // 1. 注册shutdown hook
+                // 2. 启动配置中心
+                // 3. 加载Application Config
+                // 4. 初始化ModuleDeployers
+                // 5. 启动元数据中心
                 initialize();
 
+                // 启动所有Module
                 doStart();
             } catch (Throwable e) {
                 onFailed(getIdentifier() + " start failure", e);
@@ -562,6 +634,8 @@ public class DefaultApplicationDeployer extends AbstractDeployer<ApplicationMode
     }
 
     private void doStart() {
+        // 启动所有modules
+        // 先启动内部module，在启动外部module
         startModules();
 
         // prepare application instance
@@ -593,11 +667,17 @@ public class DefaultApplicationDeployer extends AbstractDeployer<ApplicationMode
 
     private void startModules() {
         // ensure init and start internal module first
+        // 先启动所有内部Module
         prepareInternalModule();
 
         // filter and start pending modules, ignore new module during starting, throw exception of module start
+        // 启动每一个ApplicationModel下的外部ModuleModel
         for (ModuleModel moduleModel : new ArrayList<>(applicationModel.getModuleModels())) {
+            // 判断ModuleModel是否处于PENDING状态
             if (moduleModel.getDeployer().isPending()) {
+                // 启动ModuleModel
+                // ModuleModel通过ModuleDeployer启动，但是ModuleDeployer内部还是会初始化ApplicationDeployer
+                // 服务引用、服务导出都是在ModuleDeployer中
                 moduleModel.getDeployer().start();
             }
         }
@@ -619,20 +699,27 @@ public class DefaultApplicationDeployer extends AbstractDeployer<ApplicationMode
     }
 
     public void prepareInternalModule() {
+        // 检查内部ModuleModel是否已经prepared
         if(hasPreparedInternalModule){
             return;
         }
         synchronized (internalModuleLock) {
+            // 双重检查，再次检查内部ModuleModel是否已经prepared
             if (hasPreparedInternalModule) {
                 return;
             }
 
             // start internal module
+            // 一个ApplicationModel下只有一个内部ModuleModel
+            // 获取内部ModuleModel的ModuleDeployer
             ModuleDeployer internalModuleDeployer = applicationModel.getInternalModule().getDeployer();
+            // 检查ModuleDeployer是否已经启动，状态等于STARTED
             if (!internalModuleDeployer.isStarted()) {
+                // 启动ModuleDeployer
                 Future future = internalModuleDeployer.start();
                 // wait for internal module startup
                 try {
+                    // 内部ModuleModel就5秒超时
                     future.get(5, TimeUnit.SECONDS);
                 } catch (Exception e) {
                     logger.warn("wait for internal module startup failed: " + e.getMessage(), e);
@@ -661,13 +748,16 @@ public class DefaultApplicationDeployer extends AbstractDeployer<ApplicationMode
     }
 
     private DynamicConfiguration prepareEnvironment(ConfigCenterConfig configCenter) {
+        // 检查配置中心的地址是否有效
         if (configCenter.isValid()) {
+            // cas判断这个配置中心是否已经初始化过
             if (!configCenter.checkOrUpdateInitialized(true)) {
                 return null;
             }
 
             DynamicConfiguration dynamicConfiguration;
             try {
+                // 根据url获取DynamicConfiguration
                 dynamicConfiguration = getDynamicConfiguration(configCenter.toUrl());
             } catch (Exception e) {
                 if (!configCenter.isCheck()) {
@@ -680,6 +770,7 @@ public class DefaultApplicationDeployer extends AbstractDeployer<ApplicationMode
             }
 
             if (StringUtils.isNotEmpty(configCenter.getConfigFile())) {
+                // 从配置文件获取配置信息
                 String configContent = dynamicConfiguration.getProperties(configCenter.getConfigFile(), configCenter.getGroup());
                 String appGroup = getApplication().getName();
                 String appConfigContent = null;
@@ -808,6 +899,8 @@ public class DefaultApplicationDeployer extends AbstractDeployer<ApplicationMode
 
     @Override
     public void notifyModuleChanged(ModuleModel moduleModel, DeployState state) {
+        // 检查状态
+        // 将状态设置成指定状态
         checkState(moduleModel, state);
 
         // notify module state changed or module changed
@@ -933,6 +1026,7 @@ public class DefaultApplicationDeployer extends AbstractDeployer<ApplicationMode
         if (!(isPending() || isStarted())) {
             return;
         }
+        // 设置状态为STARTING，触发DeployerListener的onListen方法
         setStarting();
         startFuture = new CompletableFuture();
         if (logger.isInfoEnabled()) {

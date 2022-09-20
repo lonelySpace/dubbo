@@ -77,7 +77,12 @@ public class Environment extends LifecycleAdapter implements ApplicationExt {
 
     @Override
     public void initialize() throws IllegalStateException {
+        // 这个是Lifecycle的扩展点，通过ExtensionLoader获取时会触发
+        // 通过cas无锁处理并发
         if (initialized.compareAndSet(false, true)) {
+            // 配置信息来自于dubbo.properties配置文件，
+            // 该配置文件的路径可以通过系统参数、环境变量配置，默认是classpath下的dubbo.properties
+            // 参数key是dubbo.properties.file
             this.propertiesConfiguration = new PropertiesConfiguration(scopeModel);
             this.systemConfiguration = new SystemConfiguration();
             this.environmentConfiguration = new EnvironmentConfiguration();

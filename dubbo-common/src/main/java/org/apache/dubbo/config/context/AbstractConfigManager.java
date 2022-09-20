@@ -476,14 +476,18 @@ public abstract class AbstractConfigManager extends LifecycleAdapter {
 
     public <T extends AbstractConfig> List<T> loadConfigsOfTypeFromProps(Class<T> cls) {
         List<T> tmpConfigs = new ArrayList<>();
+        // 获取PropertiesConfiguration
+        // 该properties通过Lifecycle的initialize扩展点初始化
         PropertiesConfiguration properties = environment.getPropertiesConfiguration();
 
         // load multiple configs with id
+        // 从配置中获取所有的配置ID集合，见方法getConfigIdsFromProps注释
         Set<String> configIds = this.getConfigIdsFromProps(cls);
         configIds.forEach(id -> {
             if (!this.getConfig(cls, id).isPresent()) {
                 T config;
                 try {
+                    // 缓存中不存在就创建一份config
                     config = createConfig(cls, scopeModel);
                     config.setId(id);
                 } catch (Exception e) {
@@ -496,10 +500,11 @@ public abstract class AbstractConfigManager extends LifecycleAdapter {
                     // add default name config (same as id), e.g. dubbo.protocols.rest.port=1234
                     key = DUBBO + "." + AbstractConfig.getPluralTagName(cls) + "." + id + ".name";
                     if (properties.getProperty(key) == null) {
+                        // 添加id默认配置
                         properties.setProperty(key, id);
                         addDefaultNameConfig = true;
                     }
-
+                    // 加载配置
                     config.refresh();
                     this.addConfig(config);
                     tmpConfigs.add(config);
@@ -515,6 +520,7 @@ public abstract class AbstractConfigManager extends LifecycleAdapter {
         });
 
         // If none config of the type, try load single config
+        // 当前范围下没有配置就获取全局配置
         if (this.getConfigs(cls).isEmpty()) {
             // load single config
             List<Map<String, String>> configurationMaps = environment.getConfigurationMaps();

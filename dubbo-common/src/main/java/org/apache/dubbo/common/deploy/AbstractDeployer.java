@@ -104,6 +104,10 @@ public abstract class AbstractDeployer<E extends ScopeModel> implements Deployer
 
     protected void setStarting() {
         this.state = STARTING;
+        // listeners来自于Dubbo SPI，DeployListener
+        // 在构造器中初始化
+        // DefaultApplicationDeployer -> DeployListener
+        // DefaultModuleDeployer -> ModuleDeployListener
         for (DeployListener<E> listener : listeners) {
             try {
                 listener.onStarting(scopeModel);
